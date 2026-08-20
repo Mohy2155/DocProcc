@@ -1,0 +1,24 @@
+# Python environment & cache
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+
+# Secret configuration files
+.env
+.env.*
+!.env.example
+
+# Node / Frontend dependencies & build artifacts
+node_modules/
+dist/
+.cache/
+
+# AWS SAM build outputs
+.aws-sam/
+
+# Operating System temporary files
+.DS_Store
+Thumbs.db
