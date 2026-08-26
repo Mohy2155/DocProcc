@@ -22,3 +22,11 @@ dist/
 # Operating System temporary files
 .DS_Store
 Thumbs.db
+
+.agent/
+.agents/
+.gemini/
+skills-lock.json
+
+# VSCode
+.vscode/

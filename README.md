@@ -5,7 +5,7 @@ DocProcc is an event-driven serverless document intelligence engine that I desig
 ## Architecture Overview
 
 ```text
-                                 +-----------------------+
+                                  +-----------------------+
                                   |     Cloudflare R2     |
                                   | Temporary PDF Storage |
                                   |  (100% S3-Compatible, |
@@ -45,19 +45,19 @@ DocProcc is an event-driven serverless document intelligence engine that I desig
 
 
 ### Data Flow
-1. Presigned Upload Authorization: Client issues POST /upload (with document_type) to Ingestion Lambda via Function URL.
+1. **Presigned Upload Authorization**: Client issues POST /upload (with document_type) to Ingestion Lambda via Function URL.
 
-2. State Creation: Ingestion Lambda writes a PENDING record to DynamoDB (storing task_id and document_type), generates a Cloudflare R2 Presigned PUT URL, and returns the URL and task_id to the client.
+2. **State Creation**: Ingestion Lambda writes a PENDING record to DynamoDB (storing task_id and document_type), generates a Cloudflare R2 Presigned PUT URL, and returns the URL and task_id to the client.
 
-3. Direct Upload: Client uploads the raw PDF directly from the browser to Cloudflare R2 via the presigned URL (bypassing Lambda 6MB payload limits).
+3. **Direct Upload**: Client uploads the raw PDF directly from the browser to Cloudflare R2 via the presigned URL (bypassing Lambda 6MB payload limits).
 
-4. Job Enqueue (Confirm Upload): Upon successful upload, client issues POST /confirm with the task_id to the Ingestion Lambda, which then sends a message with the task_id to Amazon SQS to begin processing.
+4. **Job Enqueue (Confirm Upload)**: Upon successful upload, client issues POST /confirm with the task_id to the Ingestion Lambda, which then sends a message with the task_id to Amazon SQS to begin processing.
 
-5. Text Extraction & LLM Structuring: SQS triggers Worker Lambda. The Worker extracts raw text from R2 via pypdf, fetches the target schema from DynamoDB using task_id, and queries an external LLM for structured JSON extraction.
+5. **Text Extraction & LLM Structuring**: SQS triggers Worker Lambda. The Worker extracts raw text from R2 via pypdf, fetches the target schema from DynamoDB using task_id, and queries an external LLM for structured JSON extraction.
 
-6. State Finalization & Cleanup: Worker writes the structured JSON to DynamoDB (COMPLETED) and immediately executes delete_object against R2. (Failed jobs route to SQS DLQ after retries).
+6. **State Finalization & Cleanup**: Worker writes the structured JSON to DynamoDB (COMPLETED) and immediately executes delete_object against R2. (Failed jobs route to SQS DLQ after retries).
 
-7. Retrieval: Client polls Retrieval Lambda (GET /status & GET /data) to fetch final results securely from DynamoDB.
+7. **Retrieval**: Client polls Retrieval Lambda (GET /status & GET /data) to fetch final results securely from DynamoDB.
 
 ### Cost Engineering & $0.00 Always-Free Guardrails
 
