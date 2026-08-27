@@ -1,23 +1,23 @@
 # DocProcc
 
-DocProcc is an event-driven serverless document intelligence engine that I designed with severe budget constraints to test my system design knowledge. It extracts unstructured text from PDFs via Python (`pypdf`) and structures it into validated JSON schemas using LLMs. It operates entirely on permanent free-tier primitives (AWS Always Free Tier, Cloudflare Pages & R2, and developer-tier LLM APIs) for **$0.00 execution cost forever** (with strict guardrails).
+DocProcc is an event-driven serverless document intelligence engine that I designed with severe budget constraints to test my system design knowledge. It extracts unstructured text from PDFs via Python (`pypdf`) and structures it into validated JSON schemas using LLMs. It operates entirely on permanent free-tier primitives (AWS Always Free Tier, Vercel, Supabase, and developer-tier LLM APIs) for **$0.00 execution cost forever** (with strict guardrails and no credit card requirements).
 
 ## Architecture Overview
 
 ```text
                                   +-----------------------+
-                                  |     Cloudflare R2     |
+                                  |   Supabase Storage    |
                                   | Temporary PDF Storage |
                                   |  (100% S3-Compatible, |
-                                  |   Always Free Forever)|
+                                  |     Free, No CC)      |
                                   +-----------------------+
                                     ^         |        ^
                    3. Direct Upload |         |        | DeleteObject
-                (Presigned R2 PUT)  |         |        |
+                (Presigned S3 PUT)  |         |        |
                                     |         | Get    |
 +-------------------+               |         | Object |
 |  Client Browser   | --------------+         |        |
-| (Cloudflare Pages |                         v        |
+|  (Vercel Hosted   |                         v        |
 |   Static SPA)     |                 +----------------+      +--------------+
 +-------------------+                 | Worker Lambda  | ---> | External LLM |
    |   |          ^                   +----------------+      | (Structuring)|
@@ -43,25 +43,29 @@ DocProcc is an event-driven serverless document intelligence engine that I desig
    +--- 2. Initialize Record (PENDING)
 ```
 
-
 ### Data Flow
+
 1. **Presigned Upload Authorization**: Client issues POST /upload (with document_type) to Ingestion Lambda via Function URL.
-
-2. **State Creation**: Ingestion Lambda writes a PENDING record to DynamoDB (storing task_id and document_type), generates a Cloudflare R2 Presigned PUT URL, and returns the URL and task_id to the client.
-
-3. **Direct Upload**: Client uploads the raw PDF directly from the browser to Cloudflare R2 via the presigned URL (bypassing Lambda 6MB payload limits).
-
+2. **State Creation**: Ingestion Lambda writes a PENDING record to DynamoDB (storing task_id and document_type), generates a Supabase Storage Presigned PUT URL, and returns the URL and task_id to the client.
+3. **Direct Upload**: Client uploads the raw PDF directly from the browser to Supabase Storage via the presigned URL (bypassing Lambda 6MB payload limits).
 4. **Job Enqueue (Confirm Upload)**: Upon successful upload, client issues POST /confirm with the task_id to the Ingestion Lambda, which then sends a message with the task_id to Amazon SQS to begin processing.
-
-5. **Text Extraction & LLM Structuring**: SQS triggers Worker Lambda. The Worker extracts raw text from R2 via pypdf, fetches the target schema from DynamoDB using task_id, and queries an external LLM for structured JSON extraction.
-
-6. **State Finalization & Cleanup**: Worker writes the structured JSON to DynamoDB (COMPLETED) and immediately executes delete_object against R2. (Failed jobs route to SQS DLQ after retries).
-
+5. **Text Extraction & LLM Structuring**: SQS triggers Worker Lambda. The Worker extracts raw text from Supabase via pypdf, fetches the target schema from DynamoDB using task_id, and queries an external LLM for structured JSON extraction.
+6. **State Finalization & Cleanup**: Worker writes the structured JSON to DynamoDB (COMPLETED) and immediately executes delete_object against Supabase. (Failed jobs route to SQS DLQ after retries).
 7. **Retrieval**: Client polls Retrieval Lambda (GET /status & GET /data) to fetch final results securely from DynamoDB.
+
+
+### Dynamic Schema Engine
+DocProcc does not rely on fragile regular expressions or fixed templates. It adapts dynamically to any document layout:
+* **Preset Taxonomies:** Built-in default field sets for standard categories (`INVOICE`, `RECEIPT`, `CONTRACT`, `RESUME`).
+* **Custom Field Overrides:** Clients can pass any custom list of target keys (e.g., `["chassis_number", "shift_rate"]`) in the initial upload payload.
+* **Autonomous Fallback:** When no schema is provided, the engine extracts all detectable key-value pairs and tabular data into clean nested JSON.
+
 
 ### Cost Engineering & $0.00 Always-Free Guardrails
 
-**Cloudflare Pages & R2**: Unlimited static hosting bandwidth; R2 provides 10 GB storage and 1,000,000 write operations/month free forever (zero 12-month expiration, zero API call micro-charges).
+**Vercel**: Unlimited static hosting bandwidth on the free tier. No credit card required.
+
+**Supabase Storage**: 1 GB storage and 2 GB bandwidth/month. No credit card required. Hard limits prevent overages. Completely S3 compatible.
 
 **AWS Lambda & Function URLs**: 1,000,000 requests & 400,000 GB-seconds/month (Always Free Tier).
 
@@ -74,61 +78,123 @@ DocProcc is an event-driven serverless document intelligence engine that I desig
 **LLM Engine**: Developer free-tier endpoints (Google Gemini Flash / Groq) paired with pypdf text extraction to minimize token consumption.
 
 ### Tech Stack
-**Frontend**: Cloudflare Pages (React / Static SPA)
+**Frontend**: Vercel (React / Static SPA)
 
 **Backend**: Python 3.11, AWS Lambda (Function URLs), Amazon SQS, Amazon DynamoDB
 
-**Storage**: Cloudflare R2 (S3-compatible object storage via boto3)
+**Storage**: Supabase Storage (S3-compatible object storage via boto3)
 
 **IaC**: AWS SAM (Serverless Application Model)
 
 **Secrets**: AWS Systems Manager (SSM) Parameter Store (Standard Tier - Free)
 
- ### Deployment
-1. Store LLM Secret (SSM Parameter Store)
-```Bash
+### Prerequisites
 
-aws ssm put-parameter \
-    --name "/docprocc/llm_api_key" \
-    --value "your-api-key" \
-    --type SecureString
+Ensure you have the following installed and configured:
+* **Python 3.11+** installed (`python --version`).
+* **Node.js 18+** & `npm` installed (`node -v`).
+* **AWS CLI** installed and configured (`aws configure`).
+* **AWS SAM CLI** installed (`sam --version`).
+* **Google AI Studio API Key** (Free tier Gemini Flash key).
+* **Supabase Account** with a Storage bucket and S3 credentials.
+
+---
+
+## Local Development & Testing
+
+### 1. Create a virtual environment
+
+```bash
+python -m venv .venv
+
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+
+# macOS/Linux
+source .venv/bin/activate
 ```
 
-2. Backend (AWS SAM)
-(Note: Ensure your SAM template injects Cloudflare R2 credentials to the Lambda environment variables, not the frontend).
+Install development dependencies:
 
-```Bash
+```bash
+pip install -r requirements-dev.txt
+```
+
+### 2. Configure local secrets
+
+Create a `.env` file in the project root:
+
+```env
+GEMINI_API_KEY=YOUR_KEY_HERE
+SUPABASE_PROJECT_ID=YOUR_PROJECT_ID
+SUPABASE_ACCESS_KEY_ID=YOUR_S3_ACCESS_KEY
+SUPABASE_SECRET_ACCESS_KEY=YOUR_S3_SECRET_KEY
+SUPABASE_BUCKET_NAME=docprocc-uploads
+```
+
+Do not commit `.env` or API keys to Git.
+
+### 3. Run local extraction tests
+
+```bash
+python tests/test_extraction.py
+```
+
+## Cloud Deployment
+
+### 1. Store the LLM secret
+
+```bash
+aws ssm put-parameter \
+  --name "/docprocc/llm_api_key" \
+  --value "your-api-key" \
+  --type SecureString \
+  --overwrite
+```
+
+Ensure the Lambda execution role has permission to read the specific parameter.
+
+### 2. Configure Supabase Storage
+
+Create the Supabase bucket and get the S3 credentials from the project settings. The S3 credentials should be injected into the Lambda backend configuration and must never be exposed to the frontend.
+
+### 3. Deploy the AWS infrastructure
+
+```bash
 sam build
 sam deploy --guided
 ```
 
-3. Frontend (Cloudflare Pages)
-## Local Development
+The SAM template should provision/configure the required Lambda functions, Function URLs, SQS queue/DLQ, DynamoDB table, IAM permissions, and environment configuration.
 
-```Bash
+## Local Frontend Development
 
+From the frontend directory:
+
+```bash
 cd frontend
 
-# Set API endpoints
-echo "VITE_INGESTION_API_URL=<IngestionFunctionUrl>" > .env
-echo "VITE_RETRIEVAL_API_URL=<RetrievalFunctionUrl>" >> .env
-
 npm install
+```
+
+Configure the API endpoints in `.env`:
+
+```env
+VITE_INGESTION_API_URL=<IngestionFunctionUrl>
+VITE_RETRIEVAL_API_URL=<RetrievalFunctionUrl>
+```
+
+Start the development server:
+
+```bash
 npm run dev
-
 ```
 
+## Production Frontend Deployment
 
-## Production Deployment
+Connect the repository to Vercel and configure the frontend build settings and the following environment variables:
 
-**Option A (GitHub Integration - Recommended)**: Connect your GitHub repository to Cloudflare Pages. In Settings > Environment variables, add VITE_INGESTION_API_URL and VITE_RETRIEVAL_API_URL.
-
-**Option B (Wrangler CLI)**: 
-
-```Bash
-npm run build
-npx wrangler pages deploy dist --project-name docprocc
+```text
+VITE_INGESTION_API_URL
+VITE_RETRIEVAL_API_URL
 ```
-
-
-

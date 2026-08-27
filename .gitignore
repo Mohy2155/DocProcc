@@ -27,6 +27,9 @@ Thumbs.db
 .agents/
 .gemini/
 skills-lock.json
+openspec/
 
 # VSCode
 .vscode/
+
+tests/sample_invoice.pdf
