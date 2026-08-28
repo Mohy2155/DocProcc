@@ -1,6 +1,6 @@
 # DocProcc
 
-DocProcc is an event-driven serverless document intelligence engine that I designed with severe budget constraints to test my system design knowledge. It extracts unstructured text from PDFs via Python (`pypdf`) and structures it into validated JSON schemas using LLMs. It operates entirely on permanent free-tier primitives (AWS Always Free Tier, Vercel, Supabase, and developer-tier LLM APIs) for **$0.00 execution cost forever** (with strict guardrails and no credit card requirements).
+DocProcc is an event-driven serverless document intelligence engine that I designed with severe budget constraints to test my system design knowledge. It extracts unstructured text from PDFs via Python (`pypdf`) and structures it into validated JSON schemas using LLMs. It operates entirely on permanent free-tier primitives (AWS Always Free Tier, Vercel, Supabase, and developer-tier LLM APIs) for **$0.00 execution cost forever** (with strict guardrails).
 
 ## Architecture Overview
 
@@ -63,9 +63,9 @@ DocProcc does not rely on fragile regular expressions or fixed templates. It ada
 
 ### Cost Engineering & $0.00 Always-Free Guardrails
 
-**Vercel**: Unlimited static hosting bandwidth on the free tier. No credit card required.
+**Vercel**: Unlimited static hosting bandwidth on the free tier. 
 
-**Supabase Storage**: 1 GB storage and 2 GB bandwidth/month. No credit card required. Hard limits prevent overages. Completely S3 compatible.
+**Supabase Storage**: 1 GB storage and 2 GB bandwidth/month. Hard limits prevent overages. Completely S3 compatible.
 
 **AWS Lambda & Function URLs**: 1,000,000 requests & 400,000 GB-seconds/month (Always Free Tier).
 
