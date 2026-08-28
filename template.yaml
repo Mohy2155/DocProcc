@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: DocProcc MVP Backend - Event-driven serverless document extraction engine
+
+Parameters:
+  SupabaseProjectId:
+    Type: String
+    Description: Supabase Project ID
+  SupabaseAccessKeyId:
+    Type: String
+    Description: S3 Access Key ID for Supabase Storage
+  SupabaseSecretAccessKey:
+    Type: String
+    NoEcho: true
+    Description: S3 Secret Access Key for Supabase Storage
+  SupabaseBucketName:
+    Type: String
+    Default: docprocc-uploads
+    Description: Bucket name in Supabase Storage
+  SsmParamName:
+    Type: String
+    Default: /docprocc/llm_api_key
+    Description: SSM Parameter Store path for Gemini API Key
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 15
+    MemorySize: 256
+    Architectures:
+      - x86_64
+
+Resources:
+  # -------------------------------------------------------------------------
+  # Database
+  # -------------------------------------------------------------------------
+  DocProccJobsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: DocProccJobs
+      AttributeDefinitions:
+        - AttributeName: task_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: task_id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 25
+        WriteCapacityUnits: 25
+
+  # -------------------------------------------------------------------------
+  # Queues
+  # -------------------------------------------------------------------------
+  ProcessingDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: DocProccJobDLQ
+      MessageRetentionPeriod: 1209600
+
+  ProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: DocProccJobQueue
+      VisibilityTimeout: 180 # Must match WorkerFunction timeout
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ProcessingDLQ.Arn
+        maxReceiveCount: 3
+
+  # -------------------------------------------------------------------------
+  # Lambda Functions
+  # -------------------------------------------------------------------------
+  IngestionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.ingestion.lambda_handler
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - "*"
+          AllowMethods:
+            - POST
+            - OPTIONS
+          AllowHeaders:
+            - Content-Type
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref DocProccJobsTable
+          SQS_QUEUE_URL: !Ref ProcessingQueue
+          SUPABASE_PROJECT_ID: !Ref SupabaseProjectId
+          SUPABASE_ACCESS_KEY_ID: !Ref SupabaseAccessKeyId
+          SUPABASE_SECRET_ACCESS_KEY: !Ref SupabaseSecretAccessKey
+          SUPABASE_BUCKET_NAME: !Ref SupabaseBucketName
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref DocProccJobsTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt ProcessingQueue.QueueName
+
+  WorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.worker.lambda_handler
+      Timeout: 180 # Matching VisibilityTimeout
+      MemorySize: 512
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref DocProccJobsTable
+          SUPABASE_PROJECT_ID: !Ref SupabaseProjectId
+          SUPABASE_ACCESS_KEY_ID: !Ref SupabaseAccessKeyId
+          SUPABASE_SECRET_ACCESS_KEY: !Ref SupabaseSecretAccessKey
+          SUPABASE_BUCKET_NAME: !Ref SupabaseBucketName
+          SSM_PARAM_NAME: !Ref SsmParamName
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DocProccJobsTable
+        - SQSPollerPolicy:
+            QueueName: !GetAtt ProcessingQueue.QueueName
+        - SSMParameterReadPolicy:
+            # Name of the SSM parameter (without leading slash if it's in the path)
+            ParameterName: docprocc/llm_api_key
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ProcessingQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+
+  RetrievalFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.retrieval.lambda_handler
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - "*"
+          AllowMethods:
+            - GET
+            - OPTIONS
+          AllowHeaders:
+            - "*"
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref DocProccJobsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref DocProccJobsTable
+
+Outputs:
+  IngestionFunctionUrl:
+    Description: Function URL for Ingestion API
+    Value: !GetAtt IngestionFunctionUrl.FunctionUrl
+  RetrievalFunctionUrl:
+    Description: Function URL for Retrieval API
+    Value: !GetAtt RetrievalFunctionUrl.FunctionUrl
+  DynamoDBTableName:
+    Description: DynamoDB Table Name
+    Value: !Ref DocProccJobsTable
+  ProcessingQueueUrl:
+    Description: SQS Queue URL
+    Value: !Ref ProcessingQueue

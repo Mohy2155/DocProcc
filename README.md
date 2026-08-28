@@ -8,8 +8,8 @@ DocProcc is an event-driven serverless document intelligence engine that I desig
                                   +-----------------------+
                                   |   Supabase Storage    |
                                   | Temporary PDF Storage |
-                                  |  (100% S3-Compatible, |
-                                  |     Free, No CC)      |
+                                  |  (100% S3-Compatible) |
+                                  |                       |
                                   +-----------------------+
                                     ^         |        ^
                    3. Direct Upload |         |        | DeleteObject
