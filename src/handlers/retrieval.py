@@ -8,25 +8,22 @@ TABLE_NAME = os.environ.get("DYNAMODB_TABLE", "DocProccJobs")
 table = dynamodb.Table(TABLE_NAME)
 
 def build_response(status_code: int, body: dict) -> dict:
+    from decimal import Decimal
+    class DecimalEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, Decimal):
+                return float(obj) if '.' in str(obj) else int(obj)
+            return super(DecimalEncoder, self).default(obj)
+            
     return {
         "statusCode": status_code,
         "headers": {
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
         },
-        "body": json.dumps(body),
+        "body": json.dumps(body, cls=DecimalEncoder),
     }
 
 def lambda_handler(event: dict, context) -> dict:
-    # Handle CORS preflight
-    http_method = (
-        event.get("requestContext", {}).get("http", {}).get("method", "GET")
-    )
-    if http_method == "OPTIONS":
-        return build_response(200, {"message": "OK"})
-
     query_params = event.get("queryStringParameters", {}) or {}
     task_id = query_params.get("task_id")
 

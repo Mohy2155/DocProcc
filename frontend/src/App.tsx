@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useQuery } from '@tanstack/react-query';
-import ReactJson from 'react-json-view';
+
 import { UploadCloud, FileText, CheckCircle2, AlertCircle, RefreshCw, Copy } from 'lucide-react';
 
 type PresetType = 'INVOICE' | 'RECEIPT' | 'CONTRACT' | 'RESUME' | 'CUSTOM';
@@ -239,8 +239,8 @@ function ResultViewer({ taskId, onReset }: { taskId: string, onReset: () => void
   const StatusIcon = statusDisplay.icon;
 
   const handleCopy = () => {
-    if (data?.result) {
-      navigator.clipboard.writeText(JSON.stringify(data.result, null, 2));
+    if (data?.extracted_data) {
+      navigator.clipboard.writeText(JSON.stringify(data.extracted_data, null, 2));
     }
   };
 
@@ -269,7 +269,7 @@ function ResultViewer({ taskId, onReset }: { taskId: string, onReset: () => void
         </div>
       )}
 
-      {status === 'COMPLETED' && data?.result && (
+      {status === 'COMPLETED' && data?.extracted_data && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
           {/* Key-Value Card View */}
@@ -278,7 +278,7 @@ function ResultViewer({ taskId, onReset }: { taskId: string, onReset: () => void
               <h3 className="font-medium">Extracted Data</h3>
             </div>
             <div className="p-6 space-y-4">
-              {Object.entries(data.result).map(([key, value]) => (
+              {Object.entries(data.extracted_data).map(([key, value]) => (
                 <div key={key} className="border-b border-gray-700/50 pb-2 last:border-0 last:pb-0">
                   <span className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{key}</span>
                   <span className="text-gray-200">{String(value)}</span>
@@ -300,14 +300,9 @@ function ResultViewer({ taskId, onReset }: { taskId: string, onReset: () => void
               </button>
             </div>
             <div className="p-4 flex-1 overflow-auto bg-[#1e1e1e]">
-              <ReactJson 
-                src={data.result} 
-                theme="twilight" 
-                displayDataTypes={false}
-                displayObjectSize={false}
-                enableClipboard={false}
-                style={{ backgroundColor: 'transparent' }}
-              />
+              <pre className="text-sm font-mono text-blue-300 whitespace-pre-wrap">
+                <code>{JSON.stringify(data.extracted_data, null, 2)}</code>
+              </pre>
             </div>
           </div>
           

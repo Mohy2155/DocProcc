@@ -24,7 +24,7 @@ Parameters:
 
 Globals:
   Function:
-    Runtime: python3.11
+    Runtime: python3.13
     Timeout: 15
     MemorySize: 256
     Architectures:
@@ -81,7 +81,6 @@ Resources:
             - "*"
           AllowMethods:
             - POST
-            - OPTIONS
           AllowHeaders:
             - Content-Type
       Environment:
@@ -142,7 +141,6 @@ Resources:
             - "*"
           AllowMethods:
             - GET
-            - OPTIONS
           AllowHeaders:
             - "*"
       Environment:

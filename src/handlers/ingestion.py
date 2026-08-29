@@ -41,9 +41,6 @@ def build_response(status_code: int, body: dict) -> dict:
       "statusCode": status_code,
       "headers": {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type",
       },
       "body": json.dumps(body),
   }
@@ -110,13 +107,6 @@ def handle_confirm(body: dict) -> dict:
 
 
 def lambda_handler(event: dict, context) -> dict:
-  # Handle CORS preflight
-  http_method = (
-      event.get("requestContext", {}).get("http", {}).get("method", "GET")
-  )
-  if http_method == "OPTIONS":
-    return build_response(200, {"message": "OK"})
-
   path = event.get("rawPath", "")
   raw_body = event.get("body", "{}")
   body = json.loads(raw_body) if raw_body else {}

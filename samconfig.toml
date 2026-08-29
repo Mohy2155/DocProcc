@@ -1,0 +1,13 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "docprocc-backend"
+resolve_s3 = true
+s3_prefix = "docprocc-backend"
+region = "eu-central-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "SupabaseProjectId=\"sjrkepfvdhbriwszxngg\" SupabaseAccessKeyId=\"9dc2d74fb881c5ce90324a33d6e8281b\" SupabaseSecretAccessKey=\"c00acf4eaa363b00bf48b155791cd6da1fdefbeb6f95785aa4efe38fba0ea3e2\" SupabaseBucketName=\"docprocc_uploads\" SsmParamName=\"/docprocc/llm_api_key\""
+image_repositories = []
+
+[default.global.parameters]
+region = "eu-central-1"
