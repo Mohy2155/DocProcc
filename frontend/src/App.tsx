@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useLocalHistory } from './hooks/useLocalHistory';
 import type { HistoryItem } from './hooks/useLocalHistory';
 import HistorySidebar from './components/HistorySidebar';
+import ProgressBar, { type ProgressPhase } from './components/ProgressBar';
 
 import { UploadCloud, FileText, CheckCircle2, AlertCircle, RefreshCw, Copy, Download } from 'lucide-react';
 
@@ -31,6 +32,7 @@ export default function App() {
   const [historicalTask, setHistoricalTask] = useState<HistoryItem | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
+  const [activeTaskStatus, setActiveTaskStatus] = useState<string>('');
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -131,8 +133,7 @@ export default function App() {
     setHistoricalTask(null);
     setUploadError(null);
     setUploadProgress('');
-    setCustomFields('');
-    setSelectedPreset('INVOICE');
+    setActiveTaskStatus('');
   };
 
   const handleSelectHistoricalTask = (task: HistoryItem) => {
@@ -141,12 +142,30 @@ export default function App() {
     setFile(null);
   };
 
+  let phase: ProgressPhase = 'idle';
+  if (isUploading) phase = 'uploading';
+  else if (activeTaskStatus === 'PENDING') phase = 'queued';
+  else if (activeTaskStatus === 'PROCESSING' || activeTaskStatus === 'EXTRACTING') phase = 'extracting';
+  else if (activeTaskStatus === 'COMPLETED') phase = 'completed';
+  else if (activeTaskStatus === 'FAILED') phase = 'failed';
+  else if (activeTaskStatus === 'CANCELLED') phase = 'cancelled';
+
+  let progressMessage = '';
+  if (phase === 'uploading') progressMessage = uploadProgress || 'Uploading to Supabase Storage...';
+  else if (phase === 'queued') progressMessage = 'Waiting in Amazon SQS Queue...';
+  else if (phase === 'extracting') progressMessage = 'Analyzing document structure with Gemini 2.5 Flash...';
+  else if (phase === 'completed') progressMessage = 'JSON Schema Assembled.';
+  else if (phase === 'failed') progressMessage = 'Processing failed.';
+  else if (phase === 'cancelled') progressMessage = 'Task was cancelled.';
+
+  const isRunning = phase !== 'idle' && phase !== 'completed' && phase !== 'failed' && phase !== 'cancelled';
+
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 p-8 font-sans relative">
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-8 font-sans relative">
       
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-50 bg-gray-800 border border-red-700 text-red-200 px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
+        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-red-700 text-red-200 px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
           <AlertCircle className="w-5 h-5 shrink-0 text-red-400" />
           <span className="font-medium text-sm">{toastMessage}</span>
         </div>
@@ -157,27 +176,42 @@ export default function App() {
         {/* Sidebar */}
         <div className="w-full lg:w-80 shrink-0 order-2 lg:order-1 flex flex-col gap-4 lg:sticky lg:top-8 lg:self-start">
           <HistorySidebar history={history} clearHistory={clearHistory} removeTask={removeTask} onSelectTask={handleSelectHistoricalTask} />
-          <p className="text-xs text-gray-500 text-center px-4">
-            <span className="font-medium text-gray-400">Privacy first:</span> Up to 4 processed documents are saved locally in your browser. Server-side records are permanently purged after 4 hours.
+          <p className="text-xs text-slate-500 text-center px-4">
+            <span className="font-medium text-slate-400">Privacy first:</span> Up to 4 processed documents are saved locally in your browser. Server-side records are permanently purged after 4 hours.
           </p>
         </div>
 
-        {/* Main Content */}
-        <div className="flex-1 space-y-8 order-1 lg:order-2">
-          <header className="text-center">
-            <h1 className="text-3xl font-bold mb-2 flex items-center justify-center gap-2">
-              <FileText className="w-8 h-8 text-blue-400" />
+        {/* Main Content Area */}
+        <div className="flex-1 w-full max-w-4xl min-w-0 flex flex-col transition-all duration-300 order-1 lg:order-2">
+          <header className="text-center mb-8 relative flex flex-col items-center">
+            <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-sky-400 to-blue-500 flex items-center justify-center gap-3 mb-2">
+              <img src="/favicon.svg" alt="DocProcc Logo" className="w-8 h-8" />
               DocProcc
             </h1>
-            <p className="text-gray-400">Intelligent Document Processing</p>
+            <p className="text-slate-400 text-sm">Intelligent Serverless Document Extraction</p>
+            
+            {taskId && (
+              <div className="mt-3">
+                <span className="px-3 py-1 bg-sky-900/50 text-sky-200 rounded-full text-sm font-medium border border-sky-800">
+                  Task ID: {taskId.slice(0, 8)}...
+                </span>
+              </div>
+            )}
           </header>
 
+          {(!historicalTask && phase !== 'idle' && (!taskId || isRunning || phase === 'completed' || phase === 'failed' || phase === 'cancelled')) && (
+            <div className="mb-6">
+              <ProgressBar phase={phase} subMessage={progressMessage} />
+            </div>
+          )}
+
           {!taskId ? (
-            <div className="bg-gray-800 p-6 rounded-xl shadow-xl border border-gray-700 space-y-6">
+            !isUploading && (
+              <div className="bg-slate-900 p-6 rounded-xl shadow-xl border border-slate-800 space-y-6">
             
             {/* Presets */}
             <div className="space-y-3">
-              <label className="block text-sm font-medium text-gray-300 text-center">Document Type</label>
+              <label className="block text-sm font-medium text-slate-300 text-center">Document Type</label>
               <div className="flex flex-wrap justify-center gap-2">
                 {PRESETS.map((preset) => (
                   <div key={preset} className="relative group">
@@ -185,18 +219,18 @@ export default function App() {
                       onClick={() => setSelectedPreset(preset)}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                         selectedPreset === preset 
-                          ? 'bg-blue-600 text-white' 
-                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          ? 'bg-sky-500 text-white' 
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                       }`}
                     >
                       {preset}
                     </button>
                     <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max max-w-xs z-10">
-                      <div className="bg-gray-900 text-gray-200 text-xs rounded-lg py-2 px-3 shadow-xl border border-gray-700">
-                        {preset !== 'CUSTOM' && <span className="block font-semibold text-gray-400 mb-1">Expected Fields:</span>}
+                      <div className="bg-slate-950 text-slate-200 text-xs rounded-lg py-2 px-3 shadow-xl border border-slate-800">
+                        {preset !== 'CUSTOM' && <span className="block font-semibold text-slate-400 mb-1">Expected Fields:</span>}
                         <p className="whitespace-pre-wrap">{PRESET_FIELDS_MAP[preset]}</p>
                       </div>
-                      <div className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 bg-gray-900 border-b border-r border-gray-700 rotate-45 -mt-1"></div>
+                      <div className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 bg-slate-950 border-b border-r border-slate-800 rotate-45 -mt-1"></div>
                     </div>
                   </div>
                 ))}
@@ -204,13 +238,13 @@ export default function App() {
               
               {selectedPreset === 'CUSTOM' && (
                 <div className="mt-4">
-                  <label className="block text-sm text-gray-400 mb-1 text-center">Custom Fields (comma separated)</label>
+                  <label className="block text-sm text-slate-400 mb-1 text-center">Custom Fields (comma separated)</label>
                   <input 
                     type="text" 
                     value={customFields}
                     onChange={(e) => setCustomFields(e.target.value)}
                     placeholder="e.g. company_name, total_amount, date"
-                    className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2 text-gray-100 focus:outline-none focus:border-blue-500 text-center"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-slate-100 focus:outline-none focus:border-sky-500 text-center"
                   />
                 </div>
               )}
@@ -220,17 +254,17 @@ export default function App() {
             <div 
               {...getRootProps()} 
               className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors ${
-                isDragActive ? 'border-blue-500 bg-blue-500/10' : 'border-gray-600 hover:border-gray-500 bg-gray-800/50'
+                isDragActive ? 'border-sky-500 bg-sky-500/10' : 'border-slate-700 hover:border-gray-500 bg-slate-900/50'
               }`}
             >
               <input {...getInputProps()} />
-              <UploadCloud className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <UploadCloud className="w-12 h-12 text-slate-400 mx-auto mb-4" />
               {file ? (
-                <p className="text-lg font-medium text-blue-400">{file.name}</p>
+                <p className="text-lg font-medium text-sky-400">{file.name}</p>
               ) : (
-                <p className="text-gray-400">Drag & drop a PDF here, or click to select</p>
+                <p className="text-slate-400">Drag & drop a PDF here, or click to select</p>
               )}
-              <p className="text-xs text-gray-500 mt-2">Max size: 10MB</p>
+              <p className="text-xs text-slate-500 mt-2">Max size: 10MB</p>
             </div>
 
             {uploadError && (
@@ -243,7 +277,7 @@ export default function App() {
             <button
               onClick={handleUpload}
               disabled={!file || isUploading}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+              className="w-full py-3 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-800 disabled:text-slate-500 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               {isUploading ? (
                 <>
@@ -255,8 +289,9 @@ export default function App() {
               )}
             </button>
           </div>
+          )
         ) : (
-          <ResultViewer taskId={taskId} historicalTask={historicalTask} onReset={handleReset} addOrUpdateTask={addOrUpdateTask} />
+          <ResultViewer taskId={taskId} historicalTask={historicalTask} onReset={handleReset} addOrUpdateTask={addOrUpdateTask} setActiveTaskStatus={setActiveTaskStatus} />
         )}
       </div>
     </div>
@@ -264,7 +299,7 @@ export default function App() {
   );
 }
 
-function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask }: { taskId: string, historicalTask: HistoryItem | null, onReset: () => void, addOrUpdateTask: (task: HistoryItem) => void }) {
+function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask, setActiveTaskStatus }: { taskId: string, historicalTask: HistoryItem | null, onReset: () => void, addOrUpdateTask: (task: HistoryItem) => void, setActiveTaskStatus: (s: string) => void }) {
   const retrievalUrl = import.meta.env.VITE_RETRIEVAL_API_URL;
 
   const { data: fetchedData, error } = useQuery({
@@ -287,6 +322,10 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask }: { ta
   const data = historicalTask || fetchedData;
 
   const status = data?.status || 'PENDING';
+
+  useEffect(() => {
+    setActiveTaskStatus(status);
+  }, [status, setActiveTaskStatus]);
 
   useEffect(() => {
     if (!historicalTask && data && (data.status === 'COMPLETED' || data.status === 'FAILED')) {
@@ -317,13 +356,13 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask }: { ta
   
   const getStatusDisplay = () => {
     switch(status) {
-      case 'PENDING': return { text: 'Pending', color: 'text-gray-400', icon: RefreshCw, spin: true };
-      case 'PROCESSING': return { text: 'Processing', color: 'text-blue-400', icon: RefreshCw, spin: true };
+      case 'PENDING': return { text: 'Pending', color: 'text-slate-400', icon: RefreshCw, spin: true };
+      case 'PROCESSING': return { text: 'Processing', color: 'text-sky-400', icon: RefreshCw, spin: true };
       case 'EXTRACTING': return { text: 'Extracting', color: 'text-yellow-400', icon: RefreshCw, spin: true };
       case 'COMPLETED': return { text: 'Completed', color: 'text-green-400', icon: CheckCircle2, spin: false };
       case 'FAILED': return { text: 'Failed', color: 'text-red-400', icon: AlertCircle, spin: false };
-      case 'CANCELLED': return { text: 'Cancelled', color: 'text-gray-500', icon: AlertCircle, spin: false };
-      default: return { text: status, color: 'text-gray-400', icon: RefreshCw, spin: true };
+      case 'CANCELLED': return { text: 'Cancelled', color: 'text-slate-500', icon: AlertCircle, spin: false };
+      default: return { text: status, color: 'text-slate-400', icon: RefreshCw, spin: true };
     }
   };
 
@@ -353,12 +392,12 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask }: { ta
   return (
     <div className="space-y-6">
       
-      <div className="bg-gray-800 p-6 rounded-xl shadow-xl border border-gray-700 flex items-center justify-between">
+      <div className="bg-slate-900 p-6 rounded-xl shadow-xl border border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <StatusIcon className={`w-6 h-6 ${statusDisplay.color} ${statusDisplay.spin ? 'animate-spin' : ''}`} />
           <div>
             <h2 className="font-medium text-lg">Status: <span className={statusDisplay.color}>{statusDisplay.text}</span></h2>
-            <p className="text-sm text-gray-500 font-mono">Task ID: {taskId}</p>
+            <p className="text-sm text-slate-500 font-mono">Task ID: {taskId}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -375,8 +414,8 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask }: { ta
             disabled={isProcessing}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               isProcessing 
-                ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700' 
-                : 'bg-gray-700 hover:bg-gray-600 text-white'
+                ? 'bg-slate-900 text-slate-500 cursor-not-allowed border border-slate-800' 
+                : 'bg-slate-800 hover:bg-slate-700 text-white'
             }`}
           >
             Process Another
@@ -394,43 +433,43 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask }: { ta
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
           {/* Key-Value Card View */}
-          <div className="bg-gray-800 rounded-xl shadow-xl border border-gray-700 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-700 bg-gray-900/50">
+          <div className="bg-slate-900 rounded-xl shadow-xl border border-slate-800 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-800 bg-slate-950/50">
               <h3 className="font-medium">Extracted Data</h3>
             </div>
             <div className="p-6 space-y-4">
               {Object.entries(data.extracted_data).map(([key, value]) => (
-                <div key={key} className="border-b border-gray-700/50 pb-2 last:border-0 last:pb-0">
-                  <span className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{key}</span>
-                  <span className="text-gray-200">{String(value)}</span>
+                <div key={key} className="border-b border-slate-800/50 pb-2 last:border-0 last:pb-0">
+                  <span className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">{key}</span>
+                  <span className="text-slate-200">{String(value)}</span>
                 </div>
               ))}
             </div>
           </div>
 
           {/* JSON Tree View */}
-          <div className="bg-gray-800 rounded-xl shadow-xl border border-gray-700 overflow-hidden flex flex-col">
-            <div className="px-6 py-4 border-b border-gray-700 bg-gray-900/50 flex items-center justify-between">
+          <div className="bg-slate-900 rounded-xl shadow-xl border border-slate-800 overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-800 bg-slate-950/50 flex items-center justify-between">
               <h3 className="font-medium">Raw JSON</h3>
               <div className="flex items-center gap-3">
                 <button 
                   onClick={handleDownload}
-                  className="text-gray-400 hover:text-white transition-colors"
+                  className="text-slate-400 hover:text-white transition-colors"
                   title="Download JSON"
                 >
                   <Download className="w-4 h-4" />
                 </button>
                 <button 
                   onClick={handleCopy}
-                  className="text-gray-400 hover:text-white transition-colors"
+                  className="text-slate-400 hover:text-white transition-colors"
                   title="Copy JSON"
                 >
                   <Copy className="w-4 h-4" />
                 </button>
               </div>
             </div>
-            <div className="p-4 flex-1 overflow-auto bg-[#1e1e1e]">
-              <pre className="text-sm font-mono text-blue-300 whitespace-pre-wrap">
+            <div className="p-4 flex-1 overflow-auto bg-[#0b1120]">
+              <pre className="text-sm font-mono text-sky-300 whitespace-pre-wrap">
                 <code>{JSON.stringify(data.extracted_data, null, 2)}</code>
               </pre>
             </div>
