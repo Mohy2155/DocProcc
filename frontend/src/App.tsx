@@ -6,7 +6,7 @@ import type { HistoryItem } from './hooks/useLocalHistory';
 import HistorySidebar from './components/HistorySidebar';
 import ProgressBar, { type ProgressPhase } from './components/ProgressBar';
 
-import { UploadCloud, FileText, CheckCircle2, AlertCircle, RefreshCw, Copy, Download } from 'lucide-react';
+import { UploadCloud, CheckCircle2, AlertCircle, RefreshCw, Copy, Download } from 'lucide-react';
 
 type PresetType = 'INVOICE' | 'RECEIPT' | 'CONTRACT' | 'RESUME' | 'CUSTOM';
 
@@ -19,6 +19,37 @@ const PRESET_FIELDS_MAP: Record<PresetType, string> = {
   RESUME: 'candidate_name, email, phone, skills, experience, education',
   CUSTOM: 'Define your own fields!'
 };
+
+function BackgroundPoller({ taskId, addOrUpdateTask }: { taskId: string, addOrUpdateTask: (task: HistoryItem) => void }) {
+  const retrievalUrl = import.meta.env.VITE_RETRIEVAL_API_URL;
+  useQuery({
+    queryKey: ['documentStatus', taskId, 'background'],
+    queryFn: async () => {
+      const res = await fetch(`${retrievalUrl}/data?task_id=${taskId}`);
+      if (!res.ok) throw new Error('Failed to fetch status');
+      const data = await res.json();
+      
+      if (data.status === 'COMPLETED' || data.status === 'FAILED' || data.status === 'CANCELLED') {
+        addOrUpdateTask({
+          task_id: data.task_id || taskId,
+          status: data.status,
+          created_at: data.created_at || new Date().toISOString(),
+          file_name: data.file_name,
+          extracted_data: data.extracted_data
+        });
+      }
+      return data;
+    },
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status === 'COMPLETED' || status === 'FAILED' || status === 'CANCELLED') {
+        return false;
+      }
+      return 2500;
+    }
+  });
+  return null;
+}
 
 export default function App() {
   const { history, addOrUpdateTask, removeTask, clearHistory } = useLocalHistory();
@@ -119,6 +150,12 @@ export default function App() {
       if (!confirmRes.ok) throw new Error('Failed to confirm upload');
 
       setTaskId(task_id);
+      addOrUpdateTask({
+        task_id,
+        status: 'PENDING',
+        created_at: new Date().toISOString(),
+        file_name: file.name
+      });
     } catch (err: any) {
       setUploadError(err.message || 'An error occurred during upload');
     } finally {
@@ -163,6 +200,13 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-8 font-sans relative">
       
+      {/* Background Task Pollers */}
+      {history
+        .filter(t => t.status === 'PENDING' || t.status === 'PROCESSING' || t.status === 'EXTRACTING')
+        .map(t => (
+          <BackgroundPoller key={t.task_id} taskId={t.task_id} addOrUpdateTask={addOrUpdateTask} />
+        ))}
+
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-8 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-red-700 text-red-200 px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
@@ -369,9 +413,13 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask, setAct
   const statusDisplay = getStatusDisplay();
   const StatusIcon = statusDisplay.icon;
 
+  const [showCopied, setShowCopied] = useState(false);
+
   const handleCopy = () => {
     if (data?.extracted_data) {
       navigator.clipboard.writeText(JSON.stringify(data.extracted_data, null, 2));
+      setShowCopied(true);
+      setTimeout(() => setShowCopied(false), 2000);
     }
   };
 
@@ -448,8 +496,8 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask, setAct
           </div>
 
           {/* JSON Tree View */}
-          <div className="bg-slate-900 rounded-xl shadow-xl border border-slate-800 overflow-hidden flex flex-col">
-            <div className="px-6 py-4 border-b border-slate-800 bg-slate-950/50 flex items-center justify-between">
+          <div className="bg-slate-900 rounded-xl shadow-xl border border-slate-800 flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-800 bg-slate-950/50 flex items-center justify-between rounded-t-xl">
               <h3 className="font-medium">Raw JSON</h3>
               <div className="flex items-center gap-3">
                 <button 
@@ -459,16 +507,23 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask, setAct
                 >
                   <Download className="w-4 h-4" />
                 </button>
-                <button 
-                  onClick={handleCopy}
-                  className="text-slate-400 hover:text-white transition-colors"
-                  title="Copy JSON"
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
+                <div className="relative flex items-center">
+                  <button 
+                    onClick={handleCopy}
+                    className="text-slate-400 hover:text-white transition-colors"
+                    title="Copy JSON"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                  {showCopied && (
+                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-slate-800 text-slate-200 text-xs rounded shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-200 whitespace-nowrap border border-slate-700 pointer-events-none z-50">
+                      Copied to clipboard!
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-            <div className="p-4 flex-1 overflow-auto bg-[#0b1120]">
+            <div className="p-4 flex-1 overflow-auto bg-[#0b1120] rounded-b-xl">
               <pre className="text-sm font-mono text-sky-300 whitespace-pre-wrap">
                 <code>{JSON.stringify(data.extracted_data, null, 2)}</code>
               </pre>
