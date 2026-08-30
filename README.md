@@ -54,6 +54,14 @@ DocProcc is an event-driven serverless document intelligence engine that I desig
 7. **Retrieval**: Client polls Retrieval Lambda (GET /status & GET /data) to fetch final results securely from DynamoDB.
 
 
+## Frontend Features & UX
+
+* **DocProcc Arcade**: To mitigate perceived wait times during asynchronous backend processing, the UI features a built-in retro arcade containing 3 fully playable HTML5 Canvas games (Data Breaker, Packet Defender, Byte Flap). It includes zero-dependency physics, Web Audio API synthesis, auto-pause on mouse-leave, and local high-score tracking.
+* **Unidirectional Reactive Data Flow**: The frontend completely decouples the JSON result viewer from the background polling loop. A global background poller constantly syncs with DynamoDB, updating a local state array, which the UI reactively binds to for instant transitions without loading spinners or frozen states.
+* **Visual SQS Lifecycle Tracker**: Users see a glowing 4-step progress bar that maps directly to the serverless lifecycle (Uploading → SQS Queue → LLM Extraction → Complete).
+* **Local History & Privacy**: Processed documents are cached in a client-side \localStorage\ history sidebar (capped at 4 items). True to privacy, cross-device syncing is intentionally omitted, and all server-side records are purged after 4 hours via DynamoDB TTL.
+* **Dynamic Micro-interactions**: Features animated toast notifications, blur-backdrop deletion modals, and 1-click JSON copying.
+
 ### Dynamic Schema Engine
 DocProcc does not rely on fragile regular expressions or fixed templates. It adapts dynamically to any document layout:
 * **Preset Taxonomies:** Built-in default field sets for standard categories (`INVOICE`, `RECEIPT`, `CONTRACT`, `RESUME`).
