@@ -5,7 +5,7 @@ import { useLocalHistory } from './hooks/useLocalHistory';
 import type { HistoryItem } from './hooks/useLocalHistory';
 import HistorySidebar from './components/HistorySidebar';
 
-import { UploadCloud, FileText, CheckCircle2, AlertCircle, RefreshCw, Copy } from 'lucide-react';
+import { UploadCloud, FileText, CheckCircle2, AlertCircle, RefreshCw, Copy, Download } from 'lucide-react';
 
 type PresetType = 'INVOICE' | 'RECEIPT' | 'CONTRACT' | 'RESUME' | 'CUSTOM';
 
@@ -336,6 +336,20 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask }: { ta
     }
   };
 
+  const handleDownload = () => {
+    if (data?.extracted_data) {
+      const blob = new Blob([JSON.stringify(data.extracted_data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `docprocc-extraction-${taskId || Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  };
+
   return (
     <div className="space-y-6">
       
@@ -398,13 +412,22 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask }: { ta
           <div className="bg-gray-800 rounded-xl shadow-xl border border-gray-700 overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b border-gray-700 bg-gray-900/50 flex items-center justify-between">
               <h3 className="font-medium">Raw JSON</h3>
-              <button 
-                onClick={handleCopy}
-                className="text-gray-400 hover:text-white transition-colors"
-                title="Copy JSON"
-              >
-                <Copy className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={handleDownload}
+                  className="text-gray-400 hover:text-white transition-colors"
+                  title="Download JSON"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={handleCopy}
+                  className="text-gray-400 hover:text-white transition-colors"
+                  title="Copy JSON"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+              </div>
             </div>
             <div className="p-4 flex-1 overflow-auto bg-[#1e1e1e]">
               <pre className="text-sm font-mono text-blue-300 whitespace-pre-wrap">
