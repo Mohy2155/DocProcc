@@ -11,6 +11,14 @@ type PresetType = 'INVOICE' | 'RECEIPT' | 'CONTRACT' | 'RESUME' | 'CUSTOM';
 
 const PRESETS: PresetType[] = ['INVOICE', 'RECEIPT', 'CONTRACT', 'RESUME', 'CUSTOM'];
 
+const PRESET_FIELDS_MAP: Record<PresetType, string> = {
+  INVOICE: 'date, vendor_name, seller_name, invoice_number, items_list, tax_amount, total_amount',
+  RECEIPT: 'date, merchant_name, seller_name, payment_method, items_list, tax_amount, total_amount',
+  CONTRACT: 'parties_involved, effective_date, expiration_date, governing_law, key_terms',
+  RESUME: 'candidate_name, email, phone, skills, experience, education',
+  CUSTOM: 'Define your own fields!'
+};
+
 export default function App() {
   const { history, addOrUpdateTask, removeTask, clearHistory } = useLocalHistory();
   const [selectedPreset, setSelectedPreset] = useState<PresetType>('INVOICE');
@@ -169,32 +177,40 @@ export default function App() {
             
             {/* Presets */}
             <div className="space-y-3">
-              <label className="block text-sm font-medium text-gray-300">Document Type</label>
-              <div className="flex flex-wrap gap-2">
+              <label className="block text-sm font-medium text-gray-300 text-center">Document Type</label>
+              <div className="flex flex-wrap justify-center gap-2">
                 {PRESETS.map((preset) => (
-                  <button
-                    key={preset}
-                    onClick={() => setSelectedPreset(preset)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      selectedPreset === preset 
-                        ? 'bg-blue-600 text-white' 
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    {preset}
-                  </button>
+                  <div key={preset} className="relative group">
+                    <button
+                      onClick={() => setSelectedPreset(preset)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        selectedPreset === preset 
+                          ? 'bg-blue-600 text-white' 
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max max-w-xs z-10">
+                      <div className="bg-gray-900 text-gray-200 text-xs rounded-lg py-2 px-3 shadow-xl border border-gray-700">
+                        {preset !== 'CUSTOM' && <span className="block font-semibold text-gray-400 mb-1">Expected Fields:</span>}
+                        <p className="whitespace-pre-wrap">{PRESET_FIELDS_MAP[preset]}</p>
+                      </div>
+                      <div className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 bg-gray-900 border-b border-r border-gray-700 rotate-45 -mt-1"></div>
+                    </div>
+                  </div>
                 ))}
               </div>
               
               {selectedPreset === 'CUSTOM' && (
                 <div className="mt-4">
-                  <label className="block text-sm text-gray-400 mb-1">Custom Fields (comma separated)</label>
+                  <label className="block text-sm text-gray-400 mb-1 text-center">Custom Fields (comma separated)</label>
                   <input 
                     type="text" 
                     value={customFields}
                     onChange={(e) => setCustomFields(e.target.value)}
                     placeholder="e.g. company_name, total_amount, date"
-                    className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2 text-gray-100 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2 text-gray-100 focus:outline-none focus:border-blue-500 text-center"
                   />
                 </div>
               )}
