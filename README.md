@@ -2,6 +2,8 @@
 
 DocProcc is an event-driven serverless document intelligence engine that I designed with severe budget constraints to test my system design knowledge. It extracts unstructured text from PDFs via Python (`pypdf`) and structures it into validated JSON schemas using LLMs. It operates entirely on permanent free-tier primitives (AWS Always Free Tier, Vercel, Supabase, and developer-tier LLM APIs) for **$0.00 execution cost forever** (with strict guardrails).
 
+You can test the app directly in your browser: https://docprocc.vercel.app/
+
 ## Architecture Overview
 
 ```text
