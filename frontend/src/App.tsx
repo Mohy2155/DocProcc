@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useQuery } from '@tanstack/react-query';
 import { useLocalHistory } from './hooks/useLocalHistory';
@@ -20,24 +20,24 @@ const PRESET_FIELDS_MAP: Record<PresetType, string> = {
   CUSTOM: 'Define your own fields!'
 };
 
-function BackgroundPoller({ taskId, addOrUpdateTask }: { taskId: string, addOrUpdateTask: (task: HistoryItem) => void }) {
+function BackgroundPoller({ task, addOrUpdateTask }: { task: HistoryItem, addOrUpdateTask: (task: HistoryItem) => void }) {
   const retrievalUrl = import.meta.env.VITE_RETRIEVAL_API_URL;
   useQuery({
-    queryKey: ['documentStatus', taskId, 'background'],
+    queryKey: ['documentStatus', task.task_id, 'background'],
     queryFn: async () => {
-      const res = await fetch(`${retrievalUrl}/data?task_id=${taskId}`);
+      const res = await fetch(`${retrievalUrl}/data?task_id=${task.task_id}`);
       if (!res.ok) throw new Error('Failed to fetch status');
       const data = await res.json();
       
-      if (data.status === 'COMPLETED' || data.status === 'FAILED' || data.status === 'CANCELLED') {
-        addOrUpdateTask({
-          task_id: data.task_id || taskId,
-          status: data.status,
-          created_at: data.created_at || new Date().toISOString(),
-          file_name: data.file_name,
-          extracted_data: data.extracted_data
-        });
-      }
+      // Update state on every poll tick to capture intermediate states
+      addOrUpdateTask({
+        task_id: data.task_id || task.task_id,
+        status: data.status || task.status,
+        created_at: data.created_at || task.created_at,
+        file_name: data.file_name || task.file_name,
+        extracted_data: data.extracted_data
+      });
+      
       return data;
     },
     refetchInterval: (query) => {
@@ -60,10 +60,10 @@ export default function App() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   
   const [taskId, setTaskId] = useState<string | null>(null);
-  const [historicalTask, setHistoricalTask] = useState<HistoryItem | null>(null);
+  const activeTask = taskId ? history.find(t => t.task_id === taskId) : null;
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
-  const [activeTaskStatus, setActiveTaskStatus] = useState<string>('');
+  const activeTaskStatus = activeTask ? activeTask.status : '';
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -167,14 +167,12 @@ export default function App() {
   const handleReset = () => {
     setFile(null);
     setTaskId(null);
-    setHistoricalTask(null);
     setUploadError(null);
     setUploadProgress('');
-    setActiveTaskStatus('');
+    
   };
 
   const handleSelectHistoricalTask = (task: HistoryItem) => {
-    setHistoricalTask(task);
     setTaskId(task.task_id);
     setFile(null);
   };
@@ -204,7 +202,7 @@ export default function App() {
       {history
         .filter(t => t.status === 'PENDING' || t.status === 'PROCESSING' || t.status === 'EXTRACTING')
         .map(t => (
-          <BackgroundPoller key={t.task_id} taskId={t.task_id} addOrUpdateTask={addOrUpdateTask} />
+          <BackgroundPoller key={t.task_id} task={t} addOrUpdateTask={addOrUpdateTask} />
         ))}
 
       {/* Toast Notification */}
@@ -243,7 +241,7 @@ export default function App() {
             )}
           </header>
 
-          {(!historicalTask && phase !== 'idle' && (!taskId || isRunning || phase === 'completed' || phase === 'failed' || phase === 'cancelled')) && (
+          {(phase !== 'idle' && (!taskId || isRunning)) && (
             <div className="mb-6">
               <ProgressBar phase={phase} subMessage={progressMessage} />
             </div>
@@ -335,7 +333,7 @@ export default function App() {
           </div>
           )
         ) : (
-          <ResultViewer taskId={taskId} historicalTask={historicalTask} onReset={handleReset} addOrUpdateTask={addOrUpdateTask} setActiveTaskStatus={setActiveTaskStatus} />
+          <ResultViewer task={activeTask!} onReset={handleReset} />
         )}
       </div>
     </div>
@@ -343,46 +341,9 @@ export default function App() {
   );
 }
 
-function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask, setActiveTaskStatus }: { taskId: string, historicalTask: HistoryItem | null, onReset: () => void, addOrUpdateTask: (task: HistoryItem) => void, setActiveTaskStatus: (s: string) => void }) {
-  const retrievalUrl = import.meta.env.VITE_RETRIEVAL_API_URL;
-
-  const { data: fetchedData, error } = useQuery({
-    queryKey: ['documentStatus', taskId],
-    queryFn: async () => {
-      const res = await fetch(`${retrievalUrl}/data?task_id=${taskId}`);
-      if (!res.ok) throw new Error('Failed to fetch status');
-      return res.json();
-    },
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      if (status === 'COMPLETED' || status === 'FAILED' || status === 'CANCELLED') {
-        return false;
-      }
-      return 2500;
-    },
-    enabled: !historicalTask,
-  });
-
-  const data = historicalTask || fetchedData;
-
-  const status = data?.status || 'PENDING';
-
-  useEffect(() => {
-    setActiveTaskStatus(status);
-  }, [status, setActiveTaskStatus]);
-
-  useEffect(() => {
-    if (!historicalTask && data && (data.status === 'COMPLETED' || data.status === 'FAILED')) {
-      addOrUpdateTask({
-        task_id: data.task_id || taskId,
-        status: data.status,
-        created_at: data.created_at || new Date().toISOString(),
-        file_name: data.file_name,
-        extracted_data: data.extracted_data
-      });
-    }
-  }, [data, taskId, addOrUpdateTask, historicalTask]);
-
+﻿function ResultViewer({ task, onReset }: { task: HistoryItem, onReset: () => void }) {
+  const status = task.status;
+  
   const isProcessing = status === 'PENDING' || status === 'PROCESSING' || status === 'EXTRACTING';
 
   const handleCancelTask = async () => {
@@ -391,7 +352,7 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask, setAct
       await fetch(`${ingestionUrl}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_id: taskId })
+        body: JSON.stringify({ task_id: task.task_id })
       });
     } catch (e) {
       console.error('Failed to cancel task', e);
@@ -406,7 +367,7 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask, setAct
       case 'COMPLETED': return { text: 'Completed', color: 'text-green-400', icon: CheckCircle2, spin: false };
       case 'FAILED': return { text: 'Failed', color: 'text-red-400', icon: AlertCircle, spin: false };
       case 'CANCELLED': return { text: 'Cancelled', color: 'text-slate-500', icon: AlertCircle, spin: false };
-      default: return { text: status, color: 'text-slate-400', icon: RefreshCw, spin: true };
+      default: return { text: 'Unknown', color: 'text-slate-500', icon: RefreshCw, spin: false };
     }
   };
 
@@ -416,20 +377,20 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask, setAct
   const [showCopied, setShowCopied] = useState(false);
 
   const handleCopy = () => {
-    if (data?.extracted_data) {
-      navigator.clipboard.writeText(JSON.stringify(data.extracted_data, null, 2));
+    if (task.extracted_data) {
+      navigator.clipboard.writeText(JSON.stringify(task.extracted_data, null, 2));
       setShowCopied(true);
       setTimeout(() => setShowCopied(false), 2000);
     }
   };
 
   const handleDownload = () => {
-    if (data?.extracted_data) {
-      const blob = new Blob([JSON.stringify(data.extracted_data, null, 2)], { type: 'application/json' });
+    if (task.extracted_data) {
+      const blob = new Blob([JSON.stringify(task.extracted_data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `docprocc-extraction-${taskId || Date.now()}.json`;
+      a.download = `docprocc-extraction-${task.task_id.slice(0, 8)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -438,14 +399,14 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask, setAct
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full animate-in fade-in duration-300">
       
       <div className="bg-slate-900 p-6 rounded-xl shadow-xl border border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <StatusIcon className={`w-6 h-6 ${statusDisplay.color} ${statusDisplay.spin ? 'animate-spin' : ''}`} />
           <div>
             <h2 className="font-medium text-lg">Status: <span className={statusDisplay.color}>{statusDisplay.text}</span></h2>
-            <p className="text-sm text-slate-500 font-mono">Task ID: {taskId}</p>
+            <p className="text-sm text-slate-500 font-mono">Task ID: {task.task_id}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -459,40 +420,28 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask, setAct
           )}
           <button
             onClick={onReset}
-            disabled={isProcessing}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              isProcessing 
-                ? 'bg-slate-900 text-slate-500 cursor-not-allowed border border-slate-800' 
-                : 'bg-slate-800 hover:bg-slate-700 text-white'
-            }`}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg text-sm font-medium transition-colors"
           >
-            Process Another
+            New Document
           </button>
         </div>
       </div>
 
-      {error && (
-        <div className="p-4 bg-red-900/50 border border-red-700 text-red-200 rounded-lg">
-          Error polling status: {(error as Error).message}
+      {task.status === 'FAILED' && (
+        <div className="p-4 bg-red-900/50 border border-red-800 text-red-200 rounded-xl shadow-lg flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-red-400" />
+          <div>
+            <h3 className="font-medium text-red-300">Processing Failed</h3>
+            <p className="text-sm mt-1 opacity-80 text-red-200">The server encountered an error while processing the document.</p>
+          </div>
         </div>
       )}
 
-      {status === 'COMPLETED' && data?.extracted_data && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          {/* Key-Value Card View */}
-          <div className="bg-slate-900 rounded-xl shadow-xl border border-slate-800 overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-800 bg-slate-950/50">
-              <h3 className="font-medium">Extracted Data</h3>
-            </div>
-            <div className="p-6 space-y-4">
-              {Object.entries(data.extracted_data).map(([key, value]) => (
-                <div key={key} className="border-b border-slate-800/50 pb-2 last:border-0 last:pb-0">
-                  <span className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">{key}</span>
-                  <span className="text-slate-200">{String(value)}</span>
-                </div>
-              ))}
-            </div>
+      {task.status === 'COMPLETED' && task.extracted_data && (
+        <div className="animate-in slide-in-from-bottom-4 duration-500">
+          <div className="mb-4">
+            <h3 className="font-medium text-lg text-slate-200">Extraction Results</h3>
+            <p className="text-sm text-slate-400">Successfully extracted from {task.file_name || 'document'}</p>
           </div>
 
           {/* JSON Tree View */}
@@ -523,9 +472,9 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask, setAct
                 </div>
               </div>
             </div>
-            <div className="p-4 flex-1 overflow-auto bg-[#0b1120] rounded-b-xl">
+            <div className="p-4 flex-1 overflow-auto bg-[#0b1120] rounded-b-xl max-h-[500px]">
               <pre className="text-sm font-mono text-sky-300 whitespace-pre-wrap">
-                <code>{JSON.stringify(data.extracted_data, null, 2)}</code>
+                <code>{JSON.stringify(task.extracted_data, null, 2)}</code>
               </pre>
             </div>
           </div>
@@ -535,3 +484,4 @@ function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask, setAct
     </div>
   );
 }
+
