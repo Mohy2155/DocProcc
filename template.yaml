@@ -47,6 +47,9 @@ Resources:
       ProvisionedThroughput:
         ReadCapacityUnits: 25
         WriteCapacityUnits: 25
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
 
   # -------------------------------------------------------------------------
   # Queues

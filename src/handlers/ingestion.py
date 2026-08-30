@@ -46,11 +46,15 @@ def build_response(status_code: int, body: dict) -> dict:
   }
 
 
+import time
+
 def handle_upload(body: dict) -> dict:
   document_type = body.get("document_type", "INVOICE")
   selected_fields = body.get("selected_fields", [])
+  file_name = body.get("file_name", "Unknown Document")
   task_id = str(uuid.uuid4())
   storage_key = f"raw/{task_id}/document.pdf"
+  expires_at = int(time.time()) + (4 * 3600)  # 4 hours
 
   # 1. Initialize PENDING state in DynamoDB
   table.put_item(
@@ -60,6 +64,8 @@ def handle_upload(body: dict) -> dict:
           "document_type": document_type,
           "selected_fields": selected_fields,
           "storage_key": storage_key,
+          "file_name": file_name,
+          "expires_at": expires_at,
       }
   )
 
@@ -106,6 +112,22 @@ def handle_confirm(body: dict) -> dict:
   )
 
 
+def handle_cancel(body: dict) -> dict:
+  task_id = body.get("task_id")
+  if not task_id:
+    return build_response(400, {"error": "task_id is required"})
+
+  try:
+    table.update_item(
+        Key={"task_id": task_id},
+        UpdateExpression="SET #s = :s",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":s": "CANCELLED"}
+    )
+    return build_response(200, {"message": "Job cancelled successfully"})
+  except Exception as e:
+    return build_response(500, {"error": str(e)})
+
 def lambda_handler(event: dict, context) -> dict:
   path = event.get("rawPath", "")
   raw_body = event.get("body", "{}")
@@ -115,5 +137,7 @@ def lambda_handler(event: dict, context) -> dict:
     return handle_upload(body)
   elif path.endswith("/confirm"):
     return handle_confirm(body)
+  elif path.endswith("/cancel"):
+    return handle_cancel(body)
 
   return build_response(404, {"error": f"Route not found: {path}"})

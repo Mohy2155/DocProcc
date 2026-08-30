@@ -92,7 +92,13 @@ def process_record(record):
         # 3. Extract text
         raw_text = extract_text_from_pdf(download_path)
         
-        # 4. Extract data using Gemini with strict timeout (160s)
+        # 4. Check for cancellation before calling LLM
+        check_resp = table.get_item(Key={"task_id": task_id})
+        if check_resp.get("Item", {}).get("status") == "CANCELLED":
+            print(f"Task {task_id} was cancelled, aborting.")
+            success = True
+            return
+
         api_key = get_gemini_key()
         if not api_key:
             raise ValueError("Missing Gemini API Key")

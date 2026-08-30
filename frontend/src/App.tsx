@@ -1,6 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useQuery } from '@tanstack/react-query';
+import { useLocalHistory } from './hooks/useLocalHistory';
+import type { HistoryItem } from './hooks/useLocalHistory';
+import HistorySidebar from './components/HistorySidebar';
 
 import { UploadCloud, FileText, CheckCircle2, AlertCircle, RefreshCw, Copy } from 'lucide-react';
 
@@ -9,6 +12,7 @@ type PresetType = 'INVOICE' | 'RECEIPT' | 'CONTRACT' | 'RESUME' | 'CUSTOM';
 const PRESETS: PresetType[] = ['INVOICE', 'RECEIPT', 'CONTRACT', 'RESUME', 'CUSTOM'];
 
 export default function App() {
+  const { history, addOrUpdateTask, removeTask, clearHistory } = useLocalHistory();
   const [selectedPreset, setSelectedPreset] = useState<PresetType>('INVOICE');
   const [customFields, setCustomFields] = useState<string>('');
   
@@ -16,15 +20,28 @@ export default function App() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   
   const [taskId, setTaskId] = useState<string | null>(null);
+  const [historicalTask, setHistoricalTask] = useState<HistoryItem | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
 
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const checkLimit = useCallback((): boolean => {
+    if (history.length >= 4) {
+      setToastMessage("limit reached, please remove a document before processing another");
+      setTimeout(() => setToastMessage(null), 3000);
+      return false;
+    }
+    return true;
+  }, [history.length]);
+
   const onDrop = useCallback((acceptedFiles: File[]) => {
     setUploadError(null);
+    if (!checkLimit()) return;
     if (acceptedFiles.length > 0) {
       setFile(acceptedFiles[0]);
     }
-  }, []);
+  }, [checkLimit]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -40,6 +57,7 @@ export default function App() {
 
   const handleUpload = async () => {
     if (!file) return;
+    if (!checkLimit()) return;
     setIsUploading(true);
     setUploadError(null);
     
@@ -102,26 +120,52 @@ export default function App() {
   const handleReset = () => {
     setFile(null);
     setTaskId(null);
+    setHistoricalTask(null);
     setUploadError(null);
     setUploadProgress('');
     setCustomFields('');
     setSelectedPreset('INVOICE');
   };
 
-  return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 p-8 font-sans">
-      <div className="max-w-4xl mx-auto space-y-8">
-        
-        <header className="text-center">
-          <h1 className="text-3xl font-bold mb-2 flex items-center justify-center gap-2">
-            <FileText className="w-8 h-8 text-blue-400" />
-            DocProcc
-          </h1>
-          <p className="text-gray-400">Intelligent Document Processing</p>
-        </header>
+  const handleSelectHistoricalTask = (task: HistoryItem) => {
+    setHistoricalTask(task);
+    setTaskId(task.task_id);
+    setFile(null);
+  };
 
-        {!taskId ? (
-          <div className="bg-gray-800 p-6 rounded-xl shadow-xl border border-gray-700 space-y-6">
+  return (
+    <div className="min-h-screen bg-gray-900 text-gray-100 p-8 font-sans relative">
+      
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-50 bg-gray-800 border border-red-700 text-red-200 px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
+          <AlertCircle className="w-5 h-5 shrink-0 text-red-400" />
+          <span className="font-medium text-sm">{toastMessage}</span>
+        </div>
+      )}
+
+      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-8">
+        
+        {/* Sidebar */}
+        <div className="w-full lg:w-80 shrink-0 order-2 lg:order-1 flex flex-col gap-4 lg:sticky lg:top-8 lg:self-start">
+          <HistorySidebar history={history} clearHistory={clearHistory} removeTask={removeTask} onSelectTask={handleSelectHistoricalTask} />
+          <p className="text-xs text-gray-500 text-center px-4">
+            <span className="font-medium text-gray-400">Privacy first:</span> Up to 4 processed documents are saved locally in your browser. Server-side records are permanently purged after 4 hours.
+          </p>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 space-y-8 order-1 lg:order-2">
+          <header className="text-center">
+            <h1 className="text-3xl font-bold mb-2 flex items-center justify-center gap-2">
+              <FileText className="w-8 h-8 text-blue-400" />
+              DocProcc
+            </h1>
+            <p className="text-gray-400">Intelligent Document Processing</p>
+          </header>
+
+          {!taskId ? (
+            <div className="bg-gray-800 p-6 rounded-xl shadow-xl border border-gray-700 space-y-6">
             
             {/* Presets */}
             <div className="space-y-3">
@@ -196,17 +240,18 @@ export default function App() {
             </button>
           </div>
         ) : (
-          <ResultViewer taskId={taskId} onReset={handleReset} />
+          <ResultViewer taskId={taskId} historicalTask={historicalTask} onReset={handleReset} addOrUpdateTask={addOrUpdateTask} />
         )}
       </div>
+    </div>
     </div>
   );
 }
 
-function ResultViewer({ taskId, onReset }: { taskId: string, onReset: () => void }) {
+function ResultViewer({ taskId, historicalTask, onReset, addOrUpdateTask }: { taskId: string, historicalTask: HistoryItem | null, onReset: () => void, addOrUpdateTask: (task: HistoryItem) => void }) {
   const retrievalUrl = import.meta.env.VITE_RETRIEVAL_API_URL;
 
-  const { data, error } = useQuery({
+  const { data: fetchedData, error } = useQuery({
     queryKey: ['documentStatus', taskId],
     queryFn: async () => {
       const res = await fetch(`${retrievalUrl}/data?task_id=${taskId}`);
@@ -215,14 +260,44 @@ function ResultViewer({ taskId, onReset }: { taskId: string, onReset: () => void
     },
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      if (status === 'COMPLETED' || status === 'FAILED') {
+      if (status === 'COMPLETED' || status === 'FAILED' || status === 'CANCELLED') {
         return false;
       }
       return 2500;
     },
+    enabled: !historicalTask,
   });
 
+  const data = historicalTask || fetchedData;
+
   const status = data?.status || 'PENDING';
+
+  useEffect(() => {
+    if (!historicalTask && data && (data.status === 'COMPLETED' || data.status === 'FAILED')) {
+      addOrUpdateTask({
+        task_id: data.task_id || taskId,
+        status: data.status,
+        created_at: data.created_at || new Date().toISOString(),
+        file_name: data.file_name,
+        extracted_data: data.extracted_data
+      });
+    }
+  }, [data, taskId, addOrUpdateTask, historicalTask]);
+
+  const isProcessing = status === 'PENDING' || status === 'PROCESSING' || status === 'EXTRACTING';
+
+  const handleCancelTask = async () => {
+    try {
+      const ingestionUrl = import.meta.env.VITE_INGESTION_API_URL;
+      await fetch(`${ingestionUrl}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: taskId })
+      });
+    } catch (e) {
+      console.error('Failed to cancel task', e);
+    }
+  };
   
   const getStatusDisplay = () => {
     switch(status) {
@@ -231,6 +306,7 @@ function ResultViewer({ taskId, onReset }: { taskId: string, onReset: () => void
       case 'EXTRACTING': return { text: 'Extracting', color: 'text-yellow-400', icon: RefreshCw, spin: true };
       case 'COMPLETED': return { text: 'Completed', color: 'text-green-400', icon: CheckCircle2, spin: false };
       case 'FAILED': return { text: 'Failed', color: 'text-red-400', icon: AlertCircle, spin: false };
+      case 'CANCELLED': return { text: 'Cancelled', color: 'text-gray-500', icon: AlertCircle, spin: false };
       default: return { text: status, color: 'text-gray-400', icon: RefreshCw, spin: true };
     }
   };
@@ -255,12 +331,27 @@ function ResultViewer({ taskId, onReset }: { taskId: string, onReset: () => void
             <p className="text-sm text-gray-500 font-mono">Task ID: {taskId}</p>
           </div>
         </div>
-        <button
-          onClick={onReset}
-          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"
-        >
-          Process Another
-        </button>
+        <div className="flex items-center gap-2">
+          {isProcessing && (
+            <button
+              onClick={handleCancelTask}
+              className="px-4 py-2 bg-red-900/50 hover:bg-red-900/80 text-red-200 border border-red-800 rounded-lg text-sm font-medium transition-colors"
+            >
+              Cancel Processing
+            </button>
+          )}
+          <button
+            onClick={onReset}
+            disabled={isProcessing}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              isProcessing 
+                ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700' 
+                : 'bg-gray-700 hover:bg-gray-600 text-white'
+            }`}
+          >
+            Process Another
+          </button>
+        </div>
       </div>
 
       {error && (
