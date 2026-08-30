@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useLocalHistory } from './hooks/useLocalHistory';
 import type { HistoryItem } from './hooks/useLocalHistory';
 import HistorySidebar from './components/HistorySidebar';
+import DocProccArcade from './components/Arcade/DocProccArcade';
+
 import ProgressBar, { type ProgressPhase } from './components/ProgressBar';
 
 import { UploadCloud, CheckCircle2, AlertCircle, RefreshCw, Copy, Download } from 'lucide-react';
@@ -216,12 +218,18 @@ export default function App() {
       <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-8">
         
         {/* Sidebar */}
-        <div className="w-full lg:w-80 shrink-0 order-2 lg:order-1 flex flex-col gap-4 lg:sticky lg:top-8 lg:self-start">
-          <HistorySidebar history={history} clearHistory={clearHistory} removeTask={removeTask} onSelectTask={handleSelectHistoricalTask} />
-          <p className="text-xs text-slate-500 text-center px-4">
-            <span className="font-medium text-slate-400">Privacy first:</span> Up to 4 processed documents are saved locally in your browser. Server-side records are permanently purged after 4 hours.
-          </p>
-        </div>
+                  <div className="w-full lg:w-80 shrink-0 order-2 lg:order-1 flex flex-col gap-4 lg:sticky lg:top-8 lg:self-start">
+            <HistorySidebar history={history} clearHistory={clearHistory} removeTask={removeTask} onSelectTask={handleSelectHistoricalTask} />
+            <p className="text-xs text-slate-500 text-center px-4">
+              <span className="font-medium text-slate-400">Privacy first:</span> Up to 4 processed documents are saved locally in your browser. Server-side records are permanently purged after 4 hours.
+            </p>
+                        <div className="hidden lg:block mt-2 flex flex-col items-center">
+              <p className="text-xs font-semibold text-sky-400 mb-1 tracking-wide text-center uppercase flex items-center justify-center gap-2">
+                🎮 Play mini games while you wait!
+              </p>
+              <DocProccArcade />
+            </div>
+          </div>
 
         {/* Main Content Area */}
         <div className="flex-1 w-full max-w-4xl min-w-0 flex flex-col transition-all duration-300 order-1 lg:order-2">
