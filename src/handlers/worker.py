@@ -4,7 +4,8 @@ import boto3
 from botocore.config import Config
 from google import genai
 from google.genai import types
-from pydantic import BaseModel
+from pydantic import BaseModel, create_model
+from typing import Optional
 from pypdf import PdfReader
 
 # Initialize AWS clients
@@ -106,11 +107,21 @@ def process_record(record):
         client = genai.Client(api_key=api_key, http_options={'timeout': 160000})
         
         # Define the schema inline using Pydantic (or use the one requested)
-        class ExtractedData(BaseModel):
-            summary: str
-            total_amount: float
-            date: str
-            vendor_name: str
+        selected_fields = item.get("selected_fields", [])
+        
+        if selected_fields:
+            # Dynamically build the required schema using the user's custom fields
+            field_defs = {f: (Optional[str], None) for f in selected_fields}
+            ExtractionSchema = create_model("DynamicExtractionSchema", **field_defs)
+            fields_prompt = "the requested fields"
+        else:
+            class ExtractedData(BaseModel):
+                summary: Optional[str] = None
+                total_amount: Optional[float] = None
+                date: Optional[str] = None
+                vendor_name: Optional[str] = None
+            ExtractionSchema = ExtractedData
+            fields_prompt = "the summary, total amount, date, and vendor name"
             
         prompt = f"""
 You are an expert document extraction engine.
@@ -119,14 +130,14 @@ Document Text:
 \"\"\"
 {raw_text}
 \"\"\"
-Extract the summary, total amount, date, and vendor name accurately.
+Extract {fields_prompt} accurately. If a field is not found or not applicable, leave it null.
 """
         response = client.models.generate_content(
             model="gemini-3.6-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema=ExtractedData,
+                response_schema=ExtractionSchema,
                 temperature=0.0,
             )
         )

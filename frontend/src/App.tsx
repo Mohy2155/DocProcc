@@ -77,7 +77,7 @@ export default function App() {
       
       const fieldsArray = selectedPreset === 'CUSTOM' 
         ? customFields.split(',').map(f => f.trim()).filter(Boolean)
-        : [];
+        : PRESET_FIELDS_MAP[selectedPreset].split(',').map(f => f.trim()).filter(Boolean);
 
       // 1. Send POST /upload
       const uploadRes = await fetch(`${ingestionUrl}/upload`, {
