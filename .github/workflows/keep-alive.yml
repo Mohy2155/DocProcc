@@ -1,1 +1,28 @@
+name: Supabase Keep-Alive Heartbeat
 
+on:
+  schedule:
+    # Runs at 00:00 UTC every Tuesday and Friday
+    - cron: '0 0 * * 2,5'
+  workflow_dispatch: # Allows you to manually trigger it from the GitHub web UI
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Storage API
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "${{ secrets.SUPABASE_URL }}/storage/v1/bucket")
+          
+          echo "Supabase responded with HTTP status code: $STATUS"
+          
+          if [ "$STATUS" -eq 200 ] || [ "$STATUS" -eq 204 ]; then
+            echo "Ping successful! Activity recorded."
+            exit 0
+          else
+            echo "Unexpected status code received."
+            exit 1
+          fi
